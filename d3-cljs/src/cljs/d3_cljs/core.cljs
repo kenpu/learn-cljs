@@ -2,163 +2,82 @@
 (ns d3-cljs.core
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
   (:require [cljsjs.d3]
-            [cljs.core.async :refer [put! chan <! >! timeout close!]]))
+            [cljs.core.async :refer [put! chan <! >! timeout close!]]
+            [d3-cljs.fractal-tree :as fractal]
+            [d3-cljs.events :as events]))
 
 (enable-console-print!)
 
+(def dur-animation 500)
+(def interval 1500)
+
 (def div (js/$ "#main"))
 
-(defn ticks [duration max]
-  (let [c (chan)]
-    (go
-      (loop [i 0]
-             (>! c i)
-             (<! (timeout duration))
-             (if (< i max)
-               (recur (inc i))))
-      (close! c))
-    c))
+(defn x1 [p] (.-x p))
+(defn y1 [p] (.-y p))
+(defn x2 [p] (-> p (js->clj :keywordize-keys true) (fractal/end-point) (:x)))
+(defn y2 [p] (-> p (js->clj :keywordize-keys true) (fractal/end-point) (:y)))
 
+(defn stroke-width [p] (.-level p))
 
-(def seed {:i 0
-           :x 420
-           :y 600
-           :a 0     ; angle
-           :l 130   ; length
-           :d 1     ; depth
-           })
+(declare level)
 
-(def da 0.5)
-(def dl 0.76)
-(def ar 0.7)
-(def max-depth 10)
-
-(def id-counter (atom 0))
-(defn get-id []
-  (swap! id-counter inc))
-
-(defn sin [x]
-  (.sin js/Math x))
-
-(defn cos [x]
-  (.cos js/Math x))
-
-
-(defn rand []
-  (.random js/Math))
-
-(defn end-point [b]
-  (let [x (+ (:x b) (* (sin (:a b)) (:l b)))
-        y (- (:y b) (* (cos (:a b)) (:l b)))]
-    {:x x
-     :y y}))
-
-(defn make-left-branch [b]
-  (let [end (end-point b)
-        daR (- (* ar (rand)) (* ar 0.5))]
-    {:i (get-id)
-     :x (:x end)
-     :y (:y end)
-     :a (+ (- (:a b) da) daR)
-     :l (* (:l b) dl)
-     :d (+ (:d b) 1)
-     :parent (:i b)}))
-
-
-(defn make-right-branch [b]
-  (let [end (end-point b)
-        daR (- (* ar (rand)) (* ar 0.5))]
-    {:i (get-id)
-     :x (:x end)
-     :y (:y end)
-     :a (+ (+ (:a b) da) daR)
-     :l (* (:l b) dl)
-     :d (+ (:d b) 1)
-     :parent (:i b)}))
-
-(defn get-x [d]
-  (.-x d))
-
-(defn get-y [d]
-  (.-y d))
-
-(defn get-endx [d]
-  (-> d (js->clj :keywordize-keys true) end-point :x ))
-
-(defn get-endy [d]
-  (-> d (js->clj :keywordize-keys true) end-point :y))
-
-(defn get-width [d]
-  (- (inc max-depth) (.-d d)))
-
-(defn level [d]
-  (cond
-    (< (.-d d) (/ max-depth 3)) 1
-    (< (.-d d) (* 2 (/ max-depth 3))) 2
-    :else 3))
-
-(defn get-color [d]
-  (condp = (level d)
-    1 "#888"
-    2 "#8a8"
-    3 "#080"))
-
-(defn get-opacity [d]
-  (condp = (level d)
+(defn stroke-opacity [p]
+  (condp = (level p)
     1 0.8
     2 0.6
     3 0.3))
 
-(defn grow [b]
-  (if (= (:d b) max-depth)
-    [b]
-    (let [b-left (make-left-branch b)
-          b-right (make-right-branch b)]
-      (concat [b] (grow b-left) (grow b-right)))))
+(defn stroke-color [p]
+  (condp = (level p)
+    1 "#777"
+    2 "#aaa"
+    3 "#080"))
 
-(defn fractal-tree []
-  (do
-    (reset! id-counter 0)
-    (grow seed)))
+(defn level [p]
+  (cond
+    (< (.-d p) (/ (:max-depth @fractal/conf) 3))       1
+    (< (.-d p) (* 2 (/ (:max-depth @fractal/conf) 3))) 2
+    :else                                             3))
 
-(defn draw-fractal-tree [branches]
-  (do
-    (.. js/d3 
-        (select "svg")
-        (selectAll "line")
-        (data (clj->js branches))
-        (enter)
-        (append "line")
-        (attr "x1" get-x)
-        (attr "y1" get-y)
-        (attr "x2" get-endx)
-        (attr "y2" get-endy)
-        (style "stroke-width" get-width)
-        (style "stroke" get-color)
-        (style "stroke-opacity" get-opacity)
-        (attr "id" get-id))))
-
-(defn update-fractal-tree [branches]
+(defn draw [tree]
   (do
     (.. js/d3
         (select "svg")
         (selectAll "line")
-        (data (clj->js branches))
+        (data (clj->js tree))
+        (enter)
+        (append "line")
+        (attr "x1" x1)
+        (attr "y1" y1)
+        (attr "x2" x2)
+        (attr "y2" y2)
+        (attr "stroke-width" stroke-width)
+        (attr "stroke-opacity" stroke-opacity)
+        (attr "stroke" stroke-color)
+        (attr "id" #(.-i %)))))
+
+(defn redraw [tree]
+  (do
+    (.. js/d3
+        (select "svg")
+        (selectAll "line")
+        (data (clj->js tree))
         (transition)
-        (duration 5000)
-        (attr "x1" get-x)
-        (attr "y1" get-y)
-        (attr "x2" get-endx)
-        (attr "y2" get-endy))))
+        (attr "x1" x1)
+        (attr "y1" y1)
+        (attr "x2" x2)
+        (attr "y2" y2))))
+
 
 (defn -main []
-  (let [c (ticks 5000 100000)]
+  (let [c (events/ticks interval 1000)]
     (go
       (loop []
         (let [i (<! c)]
           (cond
-            (zero? i) (draw-fractal-tree (fractal-tree))
-            :else (update-fractal-tree (fractal-tree)))
+            (zero? i) (draw (fractal/tree))
+            :else     (redraw (fractal/tree)))
           (if (-> i nil? not) (recur)))))))
 
 (-main)
