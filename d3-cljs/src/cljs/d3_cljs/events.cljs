@@ -13,6 +13,17 @@
       (close! c))
     c))
 
+(defn e->data [w h e]
+  (let [ex (.-clientX e)
+        ey (.-clientY e)]
+    {:x (* 2 (- (/ ex w) 0.5))
+     :y (/ ey h)}))
 
- 
+(defn clicks []
+  (let [c (chan)
+        body (js/$ "body")
+        w (.width body)
+        h (.height body)]
+      (. body on "click" #(go (put! c (e->data w h %))))
+      c))
 

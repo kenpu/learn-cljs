@@ -8,10 +8,10 @@
            })
 
 
-(def conf (atom {:da 0.5
-                 :dl 0.8
-                 :ar 0.7
-                 :rotation-bias 0.5
+(def conf (atom {:da 0.5      ; each branch angular twist
+                 :dl 0.8      ; degradation of branch length
+                 :ar 0.2      ; magnitude for random rotation
+                 :rotation-bias 0.5 ; (bias-random) * ar
                  :max-depth 10}))
 
 (def id-counter (atom 0))
@@ -55,3 +55,15 @@
     (reset! id-counter 0)
     (grow (assoc seed :level (:max-depth @conf)))))
 
+
+(defn update-conf [dx dy]
+  "`dx` in [-1, 1]
+   `dy` in [0   1]
+    --------------------------------
+    dx => the bias  ar
+    dy => the twist rotation-bias
+  "
+  (let [da dy
+        bias (+ 0.5 (* 0.5 dx))]
+    (swap! conf merge {:da da
+                       :rotation-bias bias})))

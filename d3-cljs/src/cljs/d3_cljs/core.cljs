@@ -8,7 +8,7 @@
 
 (enable-console-print!)
 
-(def dur-animation 500)
+(def dur-animation 1500)
 (def interval 1500)
 
 (def div (js/$ "#main"))
@@ -64,20 +64,43 @@
         (selectAll "line")
         (data (clj->js tree))
         (transition)
+        (duration dur-animation)
         (attr "x1" x1)
         (attr "y1" y1)
         (attr "x2" x2)
         (attr "y2" y2))))
 
+(defn draw-tree [i idx]
+  (cond
+      (zero? i) (draw (fractal/tree))
+      :else     (redraw (fractal/tree))))
+
+
+(defn update-tree [data idx]
+  (let [{x :x y :y} data]
+    (fractal/update-conf x y)))
+
+
+
+
+
+
+
+
+(defn chan-loop [c f]
+  (go-loop [idx 0]
+       (f (<! c) idx)
+       (recur (inc idx))))
+
+(defn run-tree []
+  (chan-loop (events/ticks interval 1000) draw-tree))
+
+(defn run-clicks[]
+  (chan-loop (events/clicks) update-tree))
 
 (defn -main []
-  (let [c (events/ticks interval 1000)]
-    (go
-      (loop []
-        (let [i (<! c)]
-          (cond
-            (zero? i) (draw (fractal/tree))
-            :else     (redraw (fractal/tree)))
-          (if (-> i nil? not) (recur)))))))
+  (do
+    (run-tree)
+    (run-clicks)))
 
 (-main)
