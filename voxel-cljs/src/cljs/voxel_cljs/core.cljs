@@ -4,9 +4,20 @@
  
 ; defines the initial scene
 (def PI (.-PI js/Math))
-(def voxelconf (atom {:x (- (/ PI 4))
+(def voxelconf (atom {;; angle positions
+                      :x (- (/ PI 4))
                       :y (/ PI 2)
-                      :z 0}))
+                      :z 0
+                      ;; rotating angles
+                      :rx (/ PI 40)
+                      :ry (/ PI 50) 
+                      :rz (- (/ PI 60))
+                      ;; light position
+                      :lx -100
+                      :ly 100
+                      :lz 100
+                      ;; light travel distance
+                      :ld 950 }))
 
 (def size 30)
 
@@ -76,7 +87,7 @@
 (def meshes
   [ (.-water js/voxelcss.Meshes) ;; C
     (.-water js/voxelcss.Meshes) ;; S
-    (.-dirt js/voxelcss.Meshes) ;; .
+    (.-dirt js/voxelcss.Meshes)  ;; .
     (.-grass js/voxelcss.Meshes) ;; U
     (.-grass js/voxelcss.Meshes) ;; O
     (.-grass js/voxelcss.Meshes) ;; I
@@ -103,9 +114,23 @@
     (doseq [v voxels]
       (.remove world v))))
 
-(defn init [] 
+(defn ticks [delay]
+  (let [c (chan)]
+    (go-loop [i 0]
+      (do
+        (<! (timeout delay))
+        (>! c i)
+        (recur (inc i))))
+    c))
+
+(defn init [c] 
   (let [scene   (new js/voxelcss.Scene)
-        light   (new js/voxelcss.LightSource -100 100 100 950 0.5 1) 
+        light   (new js/voxelcss.LightSource 
+                     (:lx @voxelconf)
+                     (:ly @voxelconf)
+                     (:lz @voxelconf)
+                     (:ld @voxelconf)
+                     0.1 1) 
         world   (new js/voxelcss.World scene)
         body    (.-body js/document)]
 
@@ -124,11 +149,63 @@
 
     ;; add voxels to the world
     (doseq [v (uoit-voxels)]
-      (.add world v))))
+      (.add world v))
+
+    ;; listen the channel for updates
+    (go-loop []
+             (<! c)
+             (doto scene
+               (.rotate (:rx @voxelconf)
+                        (:ry @voxelconf)
+                        (:rz @voxelconf)))
+             (println "light distance" (:ld @voxelconf))
+             (doto light
+               (.setPosition (:lx @voxelconf)
+                             (:ly @voxelconf)
+                             (:lz @voxelconf))
+               (.setTravelDistance (:ld @voxelconf)))
+             (recur))
+    ))
 
 (enable-console-print!)
 
+;; computing the new scene / lighting positions
+;;
+(defn sin [amp freq t]
+  (* amp (Math/sin (* freq t))))
+
+(defn get-rotation [t]
+  [0 0 0])
+
+(defn get-lighting [t]
+  [(+ -0 (sin 200 (/ PI 20) t)) 100 100])
+
+(defn get-lighting-d [t]
+  400)
+
+(defn update-chan []
+  (let [events (chan)
+        clock  (ticks 300)]
+    (go-loop []
+             (let [t          (<! clock)
+                   [rx ry rz] (get-rotation t)
+                   [lx ly lz] (get-lighting t)
+                   ld         (get-lighting-d t)]
+               (swap! voxelconf merge {:rx rx
+                                       :ry ry
+                                       :rz rz
+                                       :lx lx
+                                       :ly ly
+                                       :lz lz
+                                       :ld ld})
+               (>! events 1))
+               (recur))
+    events))
+
+                 
+
 (defn -main []
-  (init))
+  (let [c (update-chan)]
+    (init c)))
 
 (-main)
