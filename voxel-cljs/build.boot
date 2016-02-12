@@ -24,7 +24,7 @@
     []
     (comp
         (watch)
-        (speak)
+        ;; (speak)
         (cljs)
         (target :dir #{"target"})))
 

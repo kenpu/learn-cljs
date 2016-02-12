@@ -1,6 +1,7 @@
 (ns voxel-cljs.core
   (:require-macros [cljs.core.async.macros :refer [go go-loop]])
-  (:require [cljs.core.async :refer [put! chan <! >! timeout close!]]))
+  (:require [cljs.core.async :refer [put! chan <! >! timeout close!]]
+            [voxel-cljs.leap :as leap]))
  
 ; defines the initial scene
 (def PI (.-PI js/Math))
@@ -208,4 +209,8 @@
   (let [c (update-chan)]
     (init c)))
 
-(-main)
+(let [c (leap/events)]
+  (go-loop []
+           (println (<! c))
+           (recur)))
+
