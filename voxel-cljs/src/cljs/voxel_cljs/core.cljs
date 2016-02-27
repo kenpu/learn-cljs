@@ -155,16 +155,15 @@
     ;; listen the channel for updates
     (go-loop []
              (<! c)
-             (doto scene
-               (.rotate (:rx @voxelconf)
-                        (:ry @voxelconf)
-                        (:rz @voxelconf)))
-             (println "light distance" (:ld @voxelconf))
-             (doto light
-               (.setPosition (:lx @voxelconf)
-                             (:ly @voxelconf)
-                             (:lz @voxelconf))
-               (.setTravelDistance (:ld @voxelconf)))
+             (let [{:keys [rx ry rz]} @voxelconf]
+               (println "doto scene" rx ry rz)
+               (doto scene
+                 (.rotate rx ry rz))
+               (doto light
+                 (.setPosition (:lx @voxelconf)
+                               (:ly @voxelconf)
+                               (:lz @voxelconf))
+                 (.setTravelDistance (:ld @voxelconf))))
              (recur))
     ))
 
@@ -203,14 +202,36 @@
                (recur))
     events))
 
+;; -------- leapmotion handler ----------
+;;
+(defn get-hand-rotation [ev]
+  (let [{:keys [normal position]} ev
+        [nx ny nz] normal
+        scale 0.3]
+    (println "leap" nx ny nz)
+    (map #(* scale %) [nz nx 0])))
+
+(defn leap-chan 
+  []
+  (let [hand (leap/events)
+        out  (chan)]
+    (go-loop [t 0]
+             (let [ev (<! hand)
+                  [rx ry rz] (get-hand-rotation ev)]
+               (swap! voxelconf merge {:rx rx
+                                       :ry ry
+                                       :rz rz})
+               (>! out 1))
+             (recur (inc t)))
+    out))
                  
 
-(defn -main []
+(defn -main-1 []
   (let [c (update-chan)]
     (init c)))
 
-(let [c (leap/events)]
-  (go-loop []
-           (println (<! c))
-           (recur)))
+(defn -main []
+  (let [c (leap-chan)]
+        (init c)))
 
+(-main)
